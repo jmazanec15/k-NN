@@ -108,16 +108,16 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         float* objectVector = env->GetFloatArrayElements(objectVectorArray, nullptr);
         uint objectVectorSize = env->GetArrayLength(objectVectorArray)*sizeof(float);
         dataset.push_back(new Object(objectIds[0], -1, objectVectorSize, objectVector));
-        env->ReleaseFloatArrayElements(objectVectorArray, objectVector, 0);
+        env->ReleaseFloatArrayElements(objectVectorArray, objectVector, JNI_ABORT);
 
         for (uint i = 1; i < objectVectorCount; i++) {
             objectVectorArray = (jfloatArray)env->GetObjectArrayElement(objectVectors, i);
             objectVector = env->GetFloatArrayElements(objectVectorArray, nullptr);
             dataset.push_back(new Object(objectIds[i], -1, objectVectorSize, objectVector));
-            env->ReleaseFloatArrayElements(objectVectorArray, objectVector, 0);
+            env->ReleaseFloatArrayElements(objectVectorArray, objectVector, JNI_ABORT);
         }
         // free up memory
-        env->ReleaseIntArrayElements(ids, objectIds, 0);
+        env->ReleaseIntArrayElements(ids, objectIds, JNI_ABORT);
         index = MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceTypeString, *space, dataset);
 
         int paramsCount = env->GetArrayLength(algoParams);
@@ -145,7 +145,7 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         delete space;
     }
     catch (...) {
-        if (objectIds) { env->ReleaseIntArrayElements(ids, objectIds, 0); }
+        if (objectIds) { env->ReleaseIntArrayElements(ids, objectIds, JNI_ABORT); }
         for (auto & it : dataset) {
              delete it;
         }
@@ -162,7 +162,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_amazon_opendistroforelasticsearch_knn_in
 
         float* rawQueryvector = env->GetFloatArrayElements(queryVector, nullptr);
         std::unique_ptr<const Object> queryObject(new Object(-1, -1, env->GetArrayLength(queryVector)*sizeof(float), rawQueryvector));
-        env->ReleaseFloatArrayElements(queryVector, rawQueryvector, 0);
+        env->ReleaseFloatArrayElements(queryVector, rawQueryvector, JNI_ABORT);
         has_exception_in_stack(env);
 
         KNNQuery<float> knnQuery(*(indexWrapper->space), queryObject.get(), k);
