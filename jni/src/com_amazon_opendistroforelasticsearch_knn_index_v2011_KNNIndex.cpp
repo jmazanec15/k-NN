@@ -85,12 +85,12 @@ void catch_cpp_exception_and_throw_java(JNIEnv* env)
     }
 }
 
-JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v2011_KNNIndex_saveIndex(JNIEnv* env, jclass cls, jintArray ids, jobjectArray vectors, jstring indexPath, jobjectArray algoParams, jstring spaceType)
+JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v2011_KNNIndex_saveIndex(JNIEnv* env, jclass cls, jintArray ids, jobjectArray objectVectors, jstring indexPath, jobjectArray algoParams, jstring spaceType)
 {
     Space<float>* space = nullptr;
     ObjectVector dataset;
     Index<float>* index = nullptr;
-    int* object_ids = nullptr;
+    int* objectIds = nullptr;
 
     try {
         const char *spaceTypeCStr = env->GetStringUTFChars(spaceType, nullptr);
@@ -98,15 +98,26 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         env->ReleaseStringUTFChars(spaceType, spaceTypeCStr);
         has_exception_in_stack(env);
         space = SpaceFactoryRegistry<float>::Instance().CreateSpace(spaceTypeString, AnyParams());
-        object_ids = env->GetIntArrayElements(ids, nullptr);
-        for (int i = 0; i < env->GetArrayLength(vectors); i++) {
-            auto vectorArray = (jfloatArray)env->GetObjectArrayElement(vectors, i);
-            float* vector = env->GetFloatArrayElements(vectorArray, nullptr);
-            dataset.push_back(new Object(object_ids[i], -1, env->GetArrayLength(vectorArray)*sizeof(float), vector));
-            env->ReleaseFloatArrayElements(vectorArray, vector, 0);
+        objectIds = env->GetIntArrayElements(ids, nullptr);
+
+        uint objectVectorCount = env->GetArrayLength(objectVectors);
+        if (objectVectorCount == 0) {
+            return;
+        }
+        auto objectVectorArray = (jfloatArray)env->GetObjectArrayElement(objectVectors, 0);
+        float* objectVector = env->GetFloatArrayElements(objectVectorArray, nullptr);
+        uint objectVectorSize = env->GetArrayLength(objectVectorArray)*sizeof(float);
+        dataset.push_back(new Object(objectIds[0], -1, objectVectorSize, objectVector));
+        env->ReleaseFloatArrayElements(objectVectorArray, objectVector, 0);
+
+        for (uint i = 1; i < objectVectorCount; i++) {
+            objectVectorArray = (jfloatArray)env->GetObjectArrayElement(objectVectors, i);
+            objectVector = env->GetFloatArrayElements(objectVectorArray, nullptr);
+            dataset.push_back(new Object(objectIds[i], -1, objectVectorSize, objectVector));
+            env->ReleaseFloatArrayElements(objectVectorArray, objectVector, 0);
         }
         // free up memory
-        env->ReleaseIntArrayElements(ids, object_ids, 0);
+        env->ReleaseIntArrayElements(ids, objectIds, 0);
         index = MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceTypeString, *space, dataset);
 
         int paramsCount = env->GetArrayLength(algoParams);
@@ -134,7 +145,7 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         delete space;
     }
     catch (...) {
-        if (object_ids) { env->ReleaseIntArrayElements(ids, object_ids, 0); }
+        if (objectIds) { env->ReleaseIntArrayElements(ids, objectIds, 0); }
         for (auto & it : dataset) {
              delete it;
         }
