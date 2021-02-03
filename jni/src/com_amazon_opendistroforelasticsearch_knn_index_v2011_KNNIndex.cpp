@@ -100,6 +100,9 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         space = SpaceFactoryRegistry<float>::Instance().CreateSpace(spaceTypeString, AnyParams());
         objectIds = env->GetIntArrayElements(ids, nullptr);
 
+        /*
+         * Extract vectors from the Java object array. Efficiently release references when they no longer are needed
+         */
         uint objectVectorCount = env->GetArrayLength(objectVectors);
         if (objectVectorCount == 0) {
             return;
@@ -116,19 +119,30 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
             dataset.push_back(new Object(objectIds[i], -1, objectVectorSize, objectVector));
             env->ReleaseFloatArrayElements(objectVectorArray, objectVector, JNI_ABORT);
         }
-        // free up memory
-        env->ReleaseIntArrayElements(ids, objectIds, JNI_ABORT);
-        index = MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceTypeString, *space, dataset);
 
-        int paramsCount = env->GetArrayLength(algoParams);
+        env->DeleteLocalRef(objectVectors);
+        env->ReleaseIntArrayElements(ids, objectIds, JNI_ABORT);
+
+        /*
+         * Extract parameters from Java array of strings.
+         */
+        uint paramsCount = env->GetArrayLength(algoParams);
         vector<string> paramsList;
-        for (int i=0; i<paramsCount; i++) {
-            auto param = (jstring) (env->GetObjectArrayElement(algoParams, i));
-            const char *rawString = env->GetStringUTFChars(param, nullptr);
+        jstring param;
+        const char * rawString;
+        for (uint i = 0; i < paramsCount; i++) {
+            param = (jstring) (env->GetObjectArrayElement(algoParams, i));
+            rawString = env->GetStringUTFChars(param, nullptr);
             paramsList.emplace_back(rawString);
             env->ReleaseStringUTFChars(param, rawString);
         }
 
+        env->DeleteLocalRef(algoParams);
+
+        /*
+         * Create Hnsw index for this segment and save it to disk
+         */
+        index = MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceTypeString, *space, dataset);
         index->CreateIndex(AnyParams(paramsList));
         has_exception_in_stack(env);
         const char *indexString = env->GetStringUTFChars(indexPath, nullptr);
@@ -158,24 +172,40 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
 JNIEXPORT jobjectArray JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v2011_KNNIndex_queryIndex(JNIEnv* env, jclass cls, jlong indexPointer, jfloatArray queryVector, jint k)
 {
     try {
+        /*
+         * Get pointer to index to be searched
+         */
         auto *indexWrapper = reinterpret_cast<IndexWrapper*>(indexPointer);
 
+        /*
+         * Create the query object that will be used for the search
+         */
         float* rawQueryvector = env->GetFloatArrayElements(queryVector, nullptr);
         std::unique_ptr<const Object> queryObject(new Object(-1, -1, env->GetArrayLength(queryVector)*sizeof(float), rawQueryvector));
         env->ReleaseFloatArrayElements(queryVector, rawQueryvector, JNI_ABORT);
         has_exception_in_stack(env);
-
         KNNQuery<float> knnQuery(*(indexWrapper->space), queryObject.get(), k);
+
+        /*
+         * Execute search against index
+         */
         indexWrapper->index->Search(&knnQuery);
+
+        /*
+         * Copy results to KNNQueryResult
+         */
         std::unique_ptr<KNNQueue<float>> result(knnQuery.Result()->Clone());
         has_exception_in_stack(env);
         int resultSize = result->Size();
         jclass resultClass = env->FindClass("com/amazon/opendistroforelasticsearch/knn/index/KNNQueryResult");
         jmethodID allArgs = env->GetMethodID(resultClass, "<init>", "(IF)V");
         jobjectArray results = env->NewObjectArray(resultSize, resultClass, nullptr);
-        for (int i = 0; i < resultSize; i++) {
-            float distance = result->TopDistance();
-            long id = result->Pop()->id();
+
+        float distance;
+        long id;
+        for (uint i = 0; i < resultSize; i++) {
+            distance = result->TopDistance();
+            id = result->Pop()->id();
             env->SetObjectArrayElement(results, i, env->NewObject(resultClass, allArgs, id, distance));
         }
         has_exception_in_stack(env);
@@ -206,12 +236,15 @@ JNIEXPORT jlong JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v20
         // Parse and set query params
         int paramsCount = env->GetArrayLength(algoParams);
         vector<string> paramsList;
+        jstring param;
+        const char *rawString;
         for (int i=0; i<paramsCount; i++) {
-            auto param = (jstring) (env->GetObjectArrayElement(algoParams, i));
-            const char *rawString = env->GetStringUTFChars(param, nullptr);
+            param = (jstring) (env->GetObjectArrayElement(algoParams, i));
+            rawString = env->GetStringUTFChars(param, nullptr);
             paramsList.emplace_back(rawString);
             env->ReleaseStringUTFChars(param, rawString);
         }
+        env->DeleteLocalRef(algoParams);
         indexWrapper->index->SetQueryTimeParams(AnyParams(paramsList));
         has_exception_in_stack(env);
 
