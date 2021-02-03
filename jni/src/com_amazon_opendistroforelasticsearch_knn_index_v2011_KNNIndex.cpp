@@ -39,7 +39,6 @@ using similarity::Object;
 using similarity::KNNQuery;
 using similarity::KNNQueue;
 
-extern "C"
 
 struct IndexWrapper {
   explicit IndexWrapper(const string& spaceType) {
