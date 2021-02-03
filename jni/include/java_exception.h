@@ -17,19 +17,22 @@
 #include <stdexcept>
 #include <new>
 
-struct JavaException {
-    explicit JavaException(JNIEnv* env, const char* type = "", const char* message = "")
-    {
-        jclass newExcCls = env->FindClass(type);
-        if (newExcCls != nullptr)
-            env->ThrowNew(newExcCls, message);
-    }
-};
-
+/*
+ * This function basically checks if there is an exception in t
+ */
 inline void has_exception_in_stack(JNIEnv* env)
 {
-    if (env->ExceptionCheck() == JNI_TRUE)
+    if (env->ExceptionCheck() == JNI_TRUE) {
         throw std::runtime_error("Exception Occurred");
+    }
+}
+
+void throw_java_exception(JNIEnv* env, const char* type = "", const char* message = "") {
+    env->ExceptionClear();
+    jclass newExcCls = env->FindClass(type);
+    if (newExcCls != nullptr) {
+        env->ThrowNew(newExcCls, message);
+    }
 }
 
 void catch_cpp_exception_and_throw_java(JNIEnv* env)
@@ -38,15 +41,15 @@ void catch_cpp_exception_and_throw_java(JNIEnv* env)
         throw;
     }
     catch (const std::bad_alloc& rhs) {
-        JavaException(env, "java/io/IOException", rhs.what());
+        throw_java_exception(env, "java/io/IOException", rhs.what());
     }
     catch (const std::runtime_error& re) {
-        JavaException(env, "java/lang/Exception", re.what());
+        throw_java_exception(env, "java/lang/Exception", re.what());
     }
     catch (const std::exception& e) {
-        JavaException(env, "java/lang/Exception", e.what());
+        throw_java_exception(env, "java/lang/Exception", e.what());
     }
     catch (...) {
-        JavaException(env, "java/lang/Exception", "Unknown exception occurred");
+        throw_java_exception(env, "java/lang/Exception", "Unknown exception occurred");
     }
 }

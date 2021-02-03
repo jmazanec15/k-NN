@@ -61,9 +61,12 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
 
     try {
         const char *spaceTypeCStr = env->GetStringUTFChars(spaceType, nullptr);
+        if (spaceTypeCStr == nullptr) {
+            has_exception_in_stack(env);
+            return;
+        }
         string spaceTypeString(spaceTypeCStr);
         env->ReleaseStringUTFChars(spaceType, spaceTypeCStr);
-        has_exception_in_stack(env);
         space = SpaceFactoryRegistry<float>::Instance().CreateSpace(spaceTypeString, AnyParams());
         objectIds = env->GetIntArrayElements(ids, nullptr);
 
@@ -111,11 +114,9 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
          */
         index = MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceTypeString, *space, dataset);
         index->CreateIndex(AnyParams(paramsList));
-        has_exception_in_stack(env);
         const char *indexString = env->GetStringUTFChars(indexPath, nullptr);
         index->SaveIndex(indexString);
         env->ReleaseStringUTFChars(indexPath, indexString);
-        has_exception_in_stack(env);
 
         // Free each object in the dataset. No need to clear the vector because it goes out of scope
         // immediately
@@ -148,9 +149,11 @@ JNIEXPORT jobjectArray JNICALL Java_com_amazon_opendistroforelasticsearch_knn_in
          * Create the query object that will be used for the search
          */
         float* rawQueryvector = env->GetFloatArrayElements(queryVector, nullptr);
+        if (rawQueryvector == nullptr) {
+            has_exception_in_stack(env);
+        }
         std::unique_ptr<const Object> queryObject(new Object(-1, -1, env->GetArrayLength(queryVector)*sizeof(float), rawQueryvector));
         env->ReleaseFloatArrayElements(queryVector, rawQueryvector, JNI_ABORT);
-        has_exception_in_stack(env);
         KNNQuery<float> knnQuery(*(indexWrapper->space), queryObject.get(), k);
 
         /*
