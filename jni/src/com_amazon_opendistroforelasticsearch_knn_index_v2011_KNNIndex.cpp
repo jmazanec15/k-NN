@@ -40,20 +40,36 @@ using similarity::KNNQuery;
 using similarity::KNNQueue;
 
 
+Space<float> * getSpacePointer(const string& spaceType) {
+    if (spaceType == "l2") {
+        static Space<float> * l2Space = SpaceFactoryRegistry<float>::Instance().CreateSpace("l2", AnyParams());
+        return l2Space;
+    } else if (spaceType == "cosinesimil") {
+        static Space<float> * cosineSpace = SpaceFactoryRegistry<float>::Instance().CreateSpace("cosinesimil", AnyParams());
+        return cosineSpace;
+    } else if (spaceType == "l1") {
+        static Space<float> * l1Space = SpaceFactoryRegistry<float>::Instance().CreateSpace("l1", AnyParams());
+        return l1Space;
+    }
+
+    //TODO: this should throw an exception
+    return nullptr;
+}
+
+
 struct IndexWrapper {
   explicit IndexWrapper(const string& spaceType) {
-    space.reset(SpaceFactoryRegistry<float>::Instance().CreateSpace(spaceType, AnyParams()));
-    index.reset(MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceType, *space, data));
+    space = spaceType;
+    ObjectVector data;
+    index.reset(MethodFactoryRegistry<float>::Instance().CreateMethod(false, "hnsw", spaceType, *getSpacePointer(space), data));
   }
-  std::unique_ptr<Space<float>> space;
+
+  string space;
   std::unique_ptr<Index<float>> index;
-  // Index gets constructed with a reference to data (see above) but is otherwise unused
-  ObjectVector data;
 };
 
 JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v2011_KNNIndex_saveIndex(JNIEnv* env, jclass cls, jintArray ids, jobjectArray objectVectors, jstring indexPath, jobjectArray algoParams, jstring spaceType)
 {
-    Space<float>* space = nullptr;
     ObjectVector dataset;
     Index<float>* index = nullptr;
     int* objectIds = nullptr;
@@ -66,7 +82,7 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
         }
         string spaceTypeString(spaceTypeCStr);
         env->ReleaseStringUTFChars(spaceType, spaceTypeCStr);
-        space = SpaceFactoryRegistry<float>::Instance().CreateSpace(spaceTypeString, AnyParams());
+        Space<float>* space = getSpacePointer(spaceTypeString);
         objectIds = env->GetIntArrayElements(ids, nullptr);
 
         /*
@@ -123,7 +139,6 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
              delete it;
         }
         delete index;
-        delete space;
     }
     catch (...) {
         if (objectIds) { env->ReleaseIntArrayElements(ids, objectIds, JNI_ABORT); }
@@ -131,7 +146,6 @@ JNIEXPORT void JNICALL Java_com_amazon_opendistroforelasticsearch_knn_index_v201
              delete it;
         }
         if (index) { delete index; }
-        if (space) { delete space; }
         catch_cpp_exception_and_throw_java(env);
     }
 }
@@ -153,7 +167,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_amazon_opendistroforelasticsearch_knn_in
         }
         std::unique_ptr<const Object> queryObject(new Object(-1, -1, env->GetArrayLength(queryVector)*sizeof(float), rawQueryvector));
         env->ReleaseFloatArrayElements(queryVector, rawQueryvector, JNI_ABORT);
-        KNNQuery<float> knnQuery(*(indexWrapper->space), queryObject.get(), k);
+        KNNQuery<float> knnQuery(*(getSpacePointer(indexWrapper->space)), queryObject.get(), k);
 
         /*
          * Execute search against index
